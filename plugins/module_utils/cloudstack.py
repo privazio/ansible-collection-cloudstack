@@ -32,8 +32,8 @@ def cs_argument_spec():
         api_key=dict(default=os.environ.get('CLOUDSTACK_KEY')),
         api_secret=dict(default=os.environ.get('CLOUDSTACK_SECRET'), no_log=True),
         api_url=dict(default=os.environ.get('CLOUDSTACK_ENDPOINT')),
-        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD')),
-        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT')),
+        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD') or 'get'),
+        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT') or 10),
         api_region=dict(default=os.environ.get('CLOUDSTACK_REGION') or 'cloudstack'),
         api_verify_ssl_cert=dict(default=os.environ.get('CLOUDSTACK_VERIFY')),
     )
@@ -44,25 +44,23 @@ def cs_required_together():
 
 
 def cs_get_api_config(params):
-    api_config_error = ''
-    api_region = params.get('api_region') or os.environ.get('CLOUDSTACK_REGION')
-    try:
-        config = read_config(api_region)
-    except (KeyError, SystemExit, ValueError) as e:
-        api_config_error = str(e)
-        config = {}
+    # Inventory plugins are not modules and don't use the same
+    # argument logic.
+    # the code below attempts to share logic between both.
+
+    config_spec = cs_argument_spec()
 
     api_config = {
-        'endpoint': params.get('api_url') or config.get('endpoint'),
-        'key': params.get('api_key') or config.get('key'),
-        'secret': params.get('api_secret') or config.get('secret'),
-        'timeout': params.get('api_timeout') or config.get('timeout') or 10,
-        'method': params.get('api_http_method') or config.get('method') or 'get',
-        'verify': params.get('api_verify_ssl_cert') or config.get('verify'),
+        'endpoint': params.get('api_url') or config_spec['api_url']['default'],
+        'key': params.get('api_key') or config_spec['api_key']['default'],
+        'secret': params.get('api_secret') or config_spec['api_secret']['default'],
+        'timeout': params.get('api_timeout') or config_spec['api_timeout']['default'],
+        'method': params.get('api_http_method') or config_spec['api_http_method']['default'],
+        'verify': params.get('api_verify_ssl_cert') or config_spec['api_verify_ssl_cert']['default'],
     }
 
     if not all([api_config['endpoint'], api_config['key'], api_config['secret']]):
-        raise ValueError("Missing api credentials: can not authenticate. " + api_config_error)
+        raise ValueError("Missing api credentials: can not authenticate.")
 
     return api_config
 
