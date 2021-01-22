@@ -38,6 +38,7 @@ options:
       - Fallback value is C(get) if not specified.
     type: str
     choices: [ get, post ]
+    default: get
   api_timeout:
     description:
       - HTTP timeout in seconds.
@@ -45,6 +46,7 @@ options:
       - As the last option, the value is taken from the ini config file, also see the notes.
       - Fallback value is 10 seconds if not specified.
     type: int
+    default: 10
   api_region:
     description:
       - Name of the ini section in the C(cloustack.ini) file.
