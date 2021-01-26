@@ -32,8 +32,8 @@ def cs_argument_spec():
         api_key=dict(default=os.environ.get('CLOUDSTACK_KEY')),
         api_secret=dict(default=os.environ.get('CLOUDSTACK_SECRET'), no_log=True),
         api_url=dict(default=os.environ.get('CLOUDSTACK_ENDPOINT')),
-        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD')),
-        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT')),
+        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD') or 'get'),
+        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT') or 10),
         api_region=dict(default=os.environ.get('CLOUDSTACK_REGION') or 'cloudstack'),
         api_verify_ssl_cert=dict(default=os.environ.get('CLOUDSTACK_VERIFY')),
     )
@@ -41,6 +41,28 @@ def cs_argument_spec():
 
 def cs_required_together():
     return [['api_key', 'api_secret']]
+
+
+def cs_get_api_config(params):
+    # Inventory plugins are not modules and don't use the same
+    # argument logic.
+    # the code below attempts to share logic between both.
+
+    config_spec = cs_argument_spec()
+
+    api_config = {
+        'endpoint': params.get('api_url') or config_spec['api_url']['default'],
+        'key': params.get('api_key') or config_spec['api_key']['default'],
+        'secret': params.get('api_secret') or config_spec['api_secret']['default'],
+        'timeout': params.get('api_timeout') or config_spec['api_timeout']['default'],
+        'method': params.get('api_http_method') or config_spec['api_http_method']['default'],
+        'verify': params.get('api_verify_ssl_cert') or config_spec['api_verify_ssl_cert']['default'],
+    }
+
+    if not all([api_config['endpoint'], api_config['key'], api_config['secret']]):
+        raise ValueError("Missing api credentials: can not authenticate.")
+
+    return api_config
 
 
 class AnsibleCloudStack:
@@ -114,20 +136,12 @@ class AnsibleCloudStack:
         return self._cs
 
     def get_api_config(self):
-        api_region = self.module.params.get('api_region') or os.environ.get('CLOUDSTACK_REGION')
         try:
-            config = read_config(api_region)
-        except KeyError:
-            config = {}
+            api_config = cs_get_api_config(self.module.params)
+        except ValueError as e:
+            self.fail_json(msg=str(e))
 
-        api_config = {
-            'endpoint': self.module.params.get('api_url') or config.get('endpoint'),
-            'key': self.module.params.get('api_key') or config.get('key'),
-            'secret': self.module.params.get('api_secret') or config.get('secret'),
-            'timeout': self.module.params.get('api_timeout') or config.get('timeout') or 10,
-            'method': self.module.params.get('api_http_method') or config.get('method') or 'get',
-            'verify': self.module.params.get('api_verify_ssl_cert') or config.get('verify'),
-        }
+        api_region = self.module.params.get('api_region') or os.environ.get('CLOUDSTACK_REGION')
         self.result.update({
             'api_region': api_region,
             'api_url': api_config['endpoint'],
@@ -136,8 +150,7 @@ class AnsibleCloudStack:
             'api_http_method': api_config['method'],
             'api_verify_ssl_cert': api_config['verify'],
         })
-        if not all([api_config['endpoint'], api_config['key'], api_config['secret']]):
-            self.fail_json(msg="Missing api credentials: can not authenticate")
+
         return api_config
 
     def fail_json(self, **kwargs):
