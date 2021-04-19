@@ -18,7 +18,7 @@ DOCUMENTATION = r'''
     author: Rafael del Valle (@rvalle)
     version_added: 2.1.0
     description:
-        - Get inventory hosts from Apache CloudStack
+        - Get inventory hosts from Apache CloudStack instances
         - Allows filtering and grouping inventory hosts.
         - |
             Uses an YAML configuration file ending with either I(cloudstack-instances.yml) or I(cloudstack-instances.yaml)
@@ -58,7 +58,7 @@ DOCUMENTATION = r'''
 
 # TODO: plugin should work as 'cloudstack' only
 EXAMPLES = '''
-# inventory_cloudstack.yml file in YAML format
+# cloudstack-instances.yml file in YAML format
 # Example command line: ansible-inventory --list -i cloudstack-instances.yml
 plugin: ngine_io.cloudstack.instance
 
