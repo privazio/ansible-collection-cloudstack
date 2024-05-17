@@ -5,6 +5,62 @@ Apache CloudStack Collection Release Notes
 .. contents:: Topics
 
 
+v2.3.0
+======
+
+Minor Changes
+-------------
+
+- cs_instance - The arguments ``cpu``, ``cpu_speed`` and ``memory`` are no longer required to be set together (https://github.com/ngine-io/ansible-collection-cloudstack/issues/111).
+- cs_instance - The optional arguments ``pod`` and ``cluster`` has been added.
+
+v2.2.4
+======
+
+Minor Changes
+-------------
+
+- Various documentation fixes and code improvements to address ansible sanity tests failure.
+
+v2.2.3
+======
+
+Bugfixes
+--------
+
+- cs_instance - Fixed regression project ID KeyError if no project is used (https://github.com/ngine-io/ansible-collection-cloudstack/pull/94).
+
+v2.2.2
+======
+
+Bugfixes
+--------
+
+- cs_instance - Fixed missing project ID to volume query when checking root disk size. (https://github.com/ngine-io/ansible-collection-cloudstack/pull/90).
+
+v2.2.1
+======
+
+Bugfixes
+--------
+
+- cs_instance - Fixed attribute error in custom service offerings handling (https://github.com/ngine-io/ansible-collection-cloudstack/pull/87).
+
+v2.2.0
+======
+
+Minor Changes
+-------------
+
+- cs_instance - add support for MAC address and IPv6 in ``ip_to_networks`` (https://github.com/ngine-io/ansible-collection-cloudstack/issues/78).
+- cs_instance_info - implemented support for ``host`` filter (https://github.com/ngine-io/ansible-collection-cloudstack/pull/83).
+- cs_network_offering - implemented support for ``tags``, ``zones`` and ``domains`` (https://github.com/ngine-io/ansible-collection-cloudstack/pull/82).
+
+Bugfixes
+--------
+
+- cs_instance - Fixed custom service offerings usage (https://github.com/ngine-io/ansible-collection-cloudstack/issues/79).
+
 v2.1.0
 ======
 

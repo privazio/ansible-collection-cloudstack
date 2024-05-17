@@ -5,6 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 
@@ -72,7 +73,6 @@ options:
     description:
       - Name of the filter used to search for the template or iso.
       - Used for params I(iso) or I(template) on I(state=present).
-      - The filter C(all) was added in 2.6.
     type: str
     default: executable
     choices: [ all, featured, self, selfexecutable, sharedexecutable, executable, community ]
@@ -120,8 +120,8 @@ options:
     type: int
   root_disk_size:
     description:
-      - Root disk size in GByte required if deploying instance with KVM hypervisor and want resize the root disk size at startup
-        (need CloudStack >= 4.4, cloud-initramfs-growroot installed and enabled in the template)
+      - "Root disk size in GByte required if deploying instance with KVM hypervisor and want resize the root disk size at startup
+        (needs CloudStack >= 4.4, cloud-initramfs-growroot installed and enabled in the template)."
     type: int
   security_groups:
     description:
@@ -135,6 +135,20 @@ options:
       - Only considered when I(state=started) or instance is running.
       - Requires root admin privileges.
     type: str
+  cluster:
+    description:
+      - Cluster on which an instance should be deployed or started on.
+      - Only considered when I(state=started) or instance is running.
+      - Requires root admin privileges.
+    type: str
+    version_added: 2.3.0
+  pod:
+    description:
+      - Pod on which an instance should be deployed or started on.
+      - Only considered when I(state=started) or instance is running.
+      - Requires root admin privileges.
+    type: str
+    version_added: 2.3.0
   domain:
     description:
       - Domain the instance is related to.
@@ -413,13 +427,12 @@ user-data:
 '''
 
 import base64
-from ansible.module_utils.basic import AnsibleModule
+
 from ansible.module_utils._text import to_bytes, to_text
-from ..module_utils.cloudstack import (
-    AnsibleCloudStack,
-    cs_argument_spec,
-    cs_required_together
-)
+from ansible.module_utils.basic import AnsibleModule
+
+from ..module_utils.cloudstack import (AnsibleCloudStack, cs_argument_spec,
+                                       cs_required_together)
 
 
 class AnsibleCloudStackInstance(AnsibleCloudStack):
@@ -469,10 +482,42 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
         hosts = self.query_api('listHosts', **args)
         if hosts:
             for h in hosts['host']:
-                if h['name'] == host_name:
+                if host_name in [h['name'], h['id']]:
                     return h['id']
 
         self.fail_json(msg="Host '%s' not found" % host_name)
+
+    def get_cluster_id(self):
+        cluster_name = self.module.params.get('cluster')
+        if not cluster_name:
+            return None
+
+        args = {
+            'zoneid': self.get_zone(key='id')
+        }
+        clusters = self.query_api('listClusters', **args)
+        if clusters:
+            for c in clusters['cluster']:
+                if cluster_name in [c['name'], c['id']]:
+                    return c['id']
+
+        self.fail_json(msg="Cluster '%s' not found" % cluster_name)
+
+    def get_pod_id(self):
+        pod_name = self.module.params.get('pod')
+        if not pod_name:
+            return None
+
+        args = {
+            'zoneid': self.get_zone(key='id')
+        }
+        pods = self.query_api('listPods', **args)
+        if pods:
+            for p in pods['pod']:
+                if pod_name in [p['name'], p['id']]:
+                    return p['id']
+
+        self.fail_json(msg="Pod '%s' not found" % pod_name)
 
     def get_template_or_iso(self, key=None):
         template = self.module.params.get('template')
@@ -570,7 +615,7 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
         ids = self.get_network_ids(network_names)
         res = []
         for i, data in enumerate(network_mappings):
-            res.append({'networkid': ids[i], 'ip': data['ip']})
+            res.append(dict(networkid=ids[i], **data))
         return res
 
     def get_ssh_keypair(self, key=None, name=None, fail_on_missing=True):
@@ -691,15 +736,23 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
 
     def get_details(self):
         details = self.module.params.get('details')
+
         cpu = self.module.params.get('cpu')
         cpu_speed = self.module.params.get('cpu_speed')
         memory = self.module.params.get('memory')
-        if all([cpu, cpu_speed, memory]):
-            details.extends({
-                'cpuNumber': cpu,
-                'cpuSpeed': cpu_speed,
-                'memory': memory,
-            })
+
+        if any([cpu, cpu_speed, memory]):
+            if details is None:
+                details = {}
+
+            if cpu:
+                details['cpuNumber'] = cpu
+
+            if cpu_speed:
+                details['cpuSpeed'] = cpu_speed
+
+            if memory:
+                details['memory'] = memory
 
         return details
 
@@ -737,6 +790,8 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
         args['details'] = self.get_details()
         args['securitygroupnames'] = self.module.params.get('security_groups')
         args['hostid'] = self.get_host_id()
+        args['clusterid'] = self.get_cluster_id()
+        args['podid'] = self.get_pod_id()
 
         template_iso = self.get_template_or_iso()
         if 'hypervisor' not in template_iso:
@@ -783,7 +838,14 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
         root_disk_size_changed = False
 
         if root_disk_size is not None:
-            res = self.query_api('listVolumes', type='ROOT', virtualmachineid=instance['id'])
+            args = {
+                'type': 'ROOT',
+                'virtualmachineid': instance['id'],
+                'account': instance.get('account'),
+                'domainid': instance.get('domainid'),
+                'projectid': instance.get('projectid'),
+            }
+            res = self.query_api('listVolumes', **args)
             [volume] = res['volume']
 
             size = volume['size'] >> 30
@@ -983,22 +1045,22 @@ class AnsibleCloudStackInstance(AnsibleCloudStack):
                 instance = self.poll_job(res, 'virtualmachine')
         return instance
 
-    def get_result(self, instance):
-        super(AnsibleCloudStackInstance, self).get_result(instance)
-        if instance:
-            self.result['user_data'] = self._get_instance_user_data(instance)
-            if 'securitygroup' in instance:
+    def get_result(self, resource):
+        super(AnsibleCloudStackInstance, self).get_result(resource)
+        if resource:
+            self.result['user_data'] = self._get_instance_user_data(resource)
+            if 'securitygroup' in resource:
                 security_groups = []
-                for securitygroup in instance['securitygroup']:
+                for securitygroup in resource['securitygroup']:
                     security_groups.append(securitygroup['name'])
                 self.result['security_groups'] = security_groups
-            if 'affinitygroup' in instance:
+            if 'affinitygroup' in resource:
                 affinity_groups = []
-                for affinitygroup in instance['affinitygroup']:
+                for affinitygroup in resource['affinitygroup']:
                     affinity_groups.append(affinitygroup['name'])
                 self.result['affinity_groups'] = affinity_groups
-            if 'nic' in instance:
-                for nic in instance['nic']:
+            if 'nic' in resource:
+                for nic in resource['nic']:
                     if nic['isdefault']:
                         if 'ipaddress' in nic:
                             self.result['default_ip'] = nic['ipaddress']
@@ -1035,6 +1097,8 @@ def main():
         keyboard=dict(type='str', choices=['de', 'de-ch', 'es', 'fi', 'fr', 'fr-be', 'fr-ch', 'is', 'it', 'jp', 'nl-be', 'no', 'pt', 'uk', 'us']),
         hypervisor=dict(),
         host=dict(),
+        cluster=dict(),
+        pod=dict(),
         security_groups=dict(type='list', elements='str', aliases=['security_group']),
         affinity_groups=dict(type='list', elements='str', aliases=['affinity_group']),
         domain=dict(),
@@ -1050,14 +1114,9 @@ def main():
         allow_root_disk_shrink=dict(type='bool', default=False),
     ))
 
-    required_together = cs_required_together()
-    required_together.extend([
-        ['cpu', 'cpu_speed', 'memory'],
-    ])
-
     module = AnsibleModule(
         argument_spec=argument_spec,
-        required_together=required_together,
+        required_together=cs_required_together(),
         required_one_of=(
             ['display_name', 'name'],
         ),

@@ -5,6 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 
@@ -35,6 +36,11 @@ options:
     description:
       - Project the instance is related to.
     type: str
+  host:
+    description:
+      - Filter by host name.
+    type: str
+    version_added: 2.2.0
 extends_documentation_fragment:
 - ngine_io.cloudstack.cloudstack
 '''
@@ -56,6 +62,11 @@ EXAMPLES = '''
 - name: Show information on all instances
   debug:
     msg: "{{ vms }}"
+
+- name: Gather information from all instances on a host
+  ngine_io.cloudstack.cs_instance_info:
+    host: host01.example.com
+  register: vms
 '''
 
 RETURN = '''
@@ -258,6 +269,7 @@ instances:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
+
 from ..module_utils.cloudstack import AnsibleCloudStack, cs_argument_spec
 
 
@@ -279,6 +291,21 @@ class AnsibleCloudStackInstanceInfo(AnsibleCloudStack):
             'hostname': 'host',
         }
 
+    def get_host(self, key=None):
+        host = self.module.params.get('host')
+        if not host:
+            return
+
+        args = {
+            'fetch_list': True,
+        }
+        res = self.query_api('listHosts', **args)
+        if res:
+            for h in res:
+                if host.lower() in [h['id'], h['ipaddress'], h['name'].lower()]:
+                    return self._get_by_key(key, h)
+        self.fail_json(msg="Host not found: %s" % host)
+
     def get_instances(self):
         instance_name = self.module.params.get('name')
 
@@ -286,6 +313,7 @@ class AnsibleCloudStackInstanceInfo(AnsibleCloudStack):
             'account': self.get_account(key='name'),
             'domainid': self.get_domain(key='id'),
             'projectid': self.get_project(key='id'),
+            'hostid': self.get_host(key='id'),
             'fetch_list': True,
         }
         # Do not pass zoneid, as the instance name must be unique across zones.
@@ -323,25 +351,25 @@ class AnsibleCloudStackInstanceInfo(AnsibleCloudStack):
             'instances': [self.update_result(resource) for resource in instances]
         }
 
-    def update_result(self, instance, result=None):
-        result = super(AnsibleCloudStackInstanceInfo, self).update_result(instance, result)
-        if instance:
-            if 'securitygroup' in instance:
+    def update_result(self, resource, result=None):
+        result = super(AnsibleCloudStackInstanceInfo, self).update_result(resource, result)
+        if resource:
+            if 'securitygroup' in resource:
                 security_groups = []
-                for securitygroup in instance['securitygroup']:
+                for securitygroup in resource['securitygroup']:
                     security_groups.append(securitygroup['name'])
                 result['security_groups'] = security_groups
-            if 'affinitygroup' in instance:
+            if 'affinitygroup' in resource:
                 affinity_groups = []
-                for affinitygroup in instance['affinitygroup']:
+                for affinitygroup in resource['affinitygroup']:
                     affinity_groups.append(affinitygroup['name'])
                 result['affinity_groups'] = affinity_groups
-            if 'nic' in instance:
-                for nic in instance['nic']:
+            if 'nic' in resource:
+                for nic in resource['nic']:
                     if nic['isdefault'] and 'ipaddress' in nic:
                         result['default_ip'] = nic['ipaddress']
-                result['nic'] = instance['nic']
-            volumes = self.get_volumes(instance)
+                result['nic'] = resource['nic']
+            volumes = self.get_volumes(instance=resource)
             if volumes:
                 result['volumes'] = volumes
         return result
@@ -354,6 +382,7 @@ def main():
         domain=dict(),
         account=dict(),
         project=dict(),
+        host=dict(),
     ))
 
     module = AnsibleModule(

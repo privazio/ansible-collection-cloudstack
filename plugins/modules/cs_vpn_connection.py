@@ -5,6 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 
@@ -36,7 +37,7 @@ options:
   force:
     description:
       - Activate the VPN gateway if not already activated on I(state=present).
-      - Also see M(cs_vpn_gateway).
+      - Also see M(ngine_io.cloudstack.cs_vpn_gateway).
     default: no
     type: bool
   state:
@@ -183,11 +184,9 @@ state:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ..module_utils.cloudstack import (
-    AnsibleCloudStack,
-    cs_argument_spec,
-    cs_required_together
-)
+
+from ..module_utils.cloudstack import (AnsibleCloudStack, cs_argument_spec,
+                                       cs_required_together)
 
 
 class AnsibleCloudStackVpnConnection(AnsibleCloudStack):
@@ -299,16 +298,16 @@ class AnsibleCloudStackVpnConnection(AnsibleCloudStack):
 
         return vpn_conn
 
-    def get_result(self, vpn_conn):
-        super(AnsibleCloudStackVpnConnection, self).get_result(vpn_conn)
-        if vpn_conn:
-            if 'cidrlist' in vpn_conn:
-                self.result['cidrs'] = vpn_conn['cidrlist'].split(',') or [vpn_conn['cidrlist']]
+    def get_result(self, resource):
+        super(AnsibleCloudStackVpnConnection, self).get_result(resource)
+        if resource:
+            if 'cidrlist' in resource:
+                self.result['cidrs'] = resource['cidrlist'].split(',') or [resource['cidrlist']]
             # Ensure we return a bool
-            self.result['force_encap'] = True if vpn_conn.get('forceencap') else False
+            self.result['force_encap'] = True if resource.get('forceencap') else False
             args = {
                 'key': 'name',
-                'identifier': vpn_conn['s2scustomergatewayid'],
+                'identifier': resource['s2scustomergatewayid'],
                 'refresh': True,
             }
             self.result['vpn_customer_gateway'] = self.get_vpn_customer_gateway(**args)
